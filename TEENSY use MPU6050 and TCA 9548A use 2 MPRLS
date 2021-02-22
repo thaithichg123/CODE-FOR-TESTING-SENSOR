@@ -9,6 +9,7 @@
 #define EOC_PIN -1   // Set to any GPIO pin to read end-of-conversion by pin
 
 Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN); // MPRLS (pressure sensor) declaration
+Adafruit_MPRLS mpr2 = Adafruit_MPRLS(RESET_PIN, EOC_PIN); // 2nd sensor
 MPU6050 accel;                                            // MPU6050 (accelerometer) declaration
 
 File myFile; // SD card file
