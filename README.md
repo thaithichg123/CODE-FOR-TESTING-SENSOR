@@ -1,5 +1,7 @@
 # General Idea
 ## 1) Introduction
+The project is from my team Space City in University of Houston. 
+
 
 
 
