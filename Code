@@ -7,19 +7,11 @@
 // You dont *need* a reset and EOC pin for most uses, so we set to -1 and don't connect
 #define RESET_PIN -1 // Set to any GPIO pin # to hard-reset on begin()
 #define EOC_PIN -1   // Set to any GPIO pin to read end-of-conversion by pin
-#define TCAADDR 0x70  // DEFINE MULTIPLEXER
 
-Adafruit_MPRLS mpr = Adafruit_MPRLS(RESET_PIN, EOC_PIN); // MPRLS (pressure sensor) declaration
-Adafruit_MPRLS mpr2 = Adafruit_MPRLS(RESET_PIN, EOC_PIN); // 2nd sensor
+Adafruit_MPRLS mpr_0 = Adafruit_MPRLS(RESET_PIN, EOC_PIN); // MPRLS (pressure sensor 1) declaration
+/// changed mpr to mpr_0 and added mpr_1
+Adafruit_MPRLS mpr_1 = Adafruit_MPRLS(RESET_PIN, EOC_PIN); // MPRLS (pressure sensor 2) declaration
 MPU6050 accel;                                            // MPU6050 (accelerometer) declaration
-
-
-/////////////////////////////////////INITIALIZE Multiplexer choose port I2C bus 2
-Wire.beginTransmission(TCAADDR);
-Wire.write(1 << 2);
-Wire.endTransmission();  
-///////////////////////////////////////// ENDED INITIALIZE
-
 
 File myFile; // SD card file
 File SafeFile; // SD card file for caution
@@ -40,21 +32,30 @@ long Period = 0;
 int16_t ax, ay, az, gx, gy, gz; // Acceleration and Gyroscope varibles from the MPU6050
 int16_t Temp;
 float axf, ayf, azf, gxf, gyf, gzf;
-float pressure_hPa; // MPRLS (pressure sensor) variable
-float pressure_hPa2;  // 2nd MPRLS (pressure sensor) variable 
+float pressure_hPa_0, pressure_hPa_1; // MPRLS (pressure sensors) variables
 
+/// added tcaselect function which acts as switch between sensors
+#define TCAADDR 0x70
+void tcaselect (uint8_t i) {
+  if (i > 7) return;
+
+  Wire.beginTransmission(TCAADDR);
+  Wire.write(1 << i);
+  Wire.endTransmission();
+}
 
 void PrintToFile()
 { // function used to log data to the file in the micro SD card
     myFile = SD.open("Data.csv", FILE_WRITE);
 
   if (count == 0){ 
-    myFile.println((String) "Time,Pressure,Pressure2,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,Temperature"); // creating the table for data values
+	/// changed pressure variable and added second variable to print lines
+    myFile.println((String) "Time,Pressure1,Pressure2,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,Temperature"); // creating the table for data values
     myFile.println((String) "[s],[lbf/in2],[lbf/in2],[m/s2],[m/s2],[m/s2],[°/s],[°/s],[°/s],[°C]");
     count = 1;
   }          
   current_time /= 1000;
-  myFile.println((String)current_time + "," + pressure_hPa + "," + pressure_hPa2 +  "," + axf + "," + ayf + "," + azf + "," + gxf + "," + gyf + "," + gzf + "," + Temp);
+  myFile.println((String)current_time + "," + pressure_hPa_0 + "," + pressure_hPa_1 + "," + axf + "," + ayf + "," + azf + "," + gxf + "," + gyf + "," + gzf + "," + Temp);
   current_time *= 1000;
   myFile.close();
 }
@@ -62,8 +63,9 @@ void PrintToSafeFile()
 { // function used to log data to the safe file in the micro SD card
   SafeFile = SD.open("SafeData.csv", FILE_WRITE);
   current_time /= 1000;
-  SafeFile.println((String)current_time + "," + pressure_hPa + "," + pressure_hPa2 + "," + axf + "," + ayf + "," + azf + "," + gxf + "," + gyf + "," + gzf + "," + Temp);
-  Serial.println((String)current_time + "," + pressure_hPa + "," + pressure_hPa2 + "," + axf + "," + ayf + "," + azf + "," + gxf + "," + gyf + "," + gzf + "," + Temp);
+  /// changed pressure variable and added second variable to print lines
+  SafeFile.println((String)current_time + "," + pressure_hPa_0 + "," + pressure_hPa_1 + "," + axf + "," + ayf + "," + azf + "," + gxf + "," + gyf + "," + gzf + "," + Temp);
+  Serial.println((String)current_time + "," + pressure_hPa_0 + "," + pressure_hPa_1 + "," + axf + "," + ayf + "," + azf + "," + gxf + "," + gyf + "," + gzf + "," + Temp);
   current_time *= 1000;
   SafeFile.close();
 }
@@ -73,11 +75,14 @@ void DataCollecttion()
 
     Period = current_time - last_time; // Period is the time in milli-seconds since last data collection
 
-    pressure_hPa = mpr.readPressure();          // Pressure data
-    pressure_hPa = pressure_hPa / 68.947572932; //
-    
-    pressure_hPa2 = mpr2.readPressure();          // 2nd Pressure data 
-    pressure_hPa2 = pressure_hPa2 / 68.947572932; //
+	/// implemented tcaselect and added info for second pressure sensor
+	tcaselect(0);
+    pressure_hPa_0 = mpr_0.readPressure();          // Pressure data
+    pressure_hPa_0 = pressure_hPa_0 / 68.947572932; //
+
+	tcaselect(1);
+	pressure_hPa_1 = mpr_1.readPressure();          // Pressure data
+    pressure_hPa_1 = pressure_hPa_1 / 68.947572932; //
 
     accel.getMotion6(&ax, &ay, &az, &gx, &gy, &gz); // Initial accelerometer data
 
@@ -129,16 +134,7 @@ void loop()
 
         if (!mpr.begin())
         {
-            Serial.print("Failed to communicate with 1st MPRLS sensor, check wiring.");
-            while (1)
-            {
-                delay(10);
-            }
-        }
-        
-             if (!mpr2.begin())
-        {
-            Serial.print("Failed to communicate with 2nd MPRLS sensor, check wiring.");
+            Serial.print("Failed to communicate with MPRLS sensor, check wiring.");
             while (1)
             {
                 delay(10);
@@ -157,8 +153,7 @@ void loop()
             accel.setZGyroOffset(26);
             state = 10; // Connections to sensors are good, change to pre-launch state
             Serial.println("MPU6050 successful connection and calibration!");
-            Serial.println("1st MPRLS successful connection!");
-            Serial.println("2nd MPRLS successful connection!");
+            Serial.println("MPRLS successful connection!");
         }
         else
         {
